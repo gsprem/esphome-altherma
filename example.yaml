@@ -1,0 +1,148 @@
+# ESPHome Altherma Heat Pump Configuration Example
+# 
+# This example shows how to configure the Altherma component for your heat pump.
+# Adjust the model, GPIO pins, and sensors according to your setup.
+
+esphome:
+  name: altherma-heatpump
+  friendly_name: Altherma Heat Pump
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+# Enable OTA updates
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Altherma Fallback"
+    password: !secret fallback_password
+
+captive_portal:
+
+# Optional: MQTT for standalone use without Home Assistant
+# mqtt:
+#   broker: !secret mqtt_broker
+#   username: !secret mqtt_user
+#   password: !secret mqtt_password
+
+# Load the Altherma external component
+external_components:
+  - source: github://gsprem/esphome-altherma@main
+    components: [altherma]
+    refresh: 0s  # Always fetch latest (or use "1d" for daily)
+
+# UART configuration for X10A connection
+# Default pins for ESP32: RX=GPIO16, TX=GPIO17
+uart:
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 9600
+  parity: EVEN
+
+# Altherma Heat Pump Hub
+altherma:
+  id: heatpump
+  protocol: I          # Use 'S' for older ROTEX/Daikin models
+  model: "Altherma(ERGA D EHV-EHB-EHVZ DA series 04-08kW)"  # Select your model
+  update_interval: 30s
+
+# Temperature Sensors
+sensor:
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Outdoor air temp."
+    name: "Outdoor Temperature"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "DHW tank temp. (R5T)"
+    name: "DHW Tank Temperature"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Leaving water temp. before BUH (R1T)"
+    name: "Leaving Water Temperature"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Inlet water temp.(R4T)"
+    name: "Return Water Temperature"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "INV primary current (A)"
+    name: "Inverter Current"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Voltage (V)"
+    name: "Voltage"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Flow sensor (l/min)"
+    name: "Water Flow"
+
+# Text Sensors for status/modes
+text_sensor:
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Operation Mode"
+    name: "Operation Mode"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "I/U operation mode"
+    name: "Indoor Unit Mode"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Error type"
+    name: "Error Type"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Error Code"
+    name: "Error Code"
+
+# Binary Sensors for ON/OFF states
+binary_sensor:
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Thermostat ON/OFF"
+    name: "Thermostat Active"
+
+# Optional: Thermostat Relay Control
+# Connect a relay to this pin to control the external thermostat input
+# switch:
+#   - platform: altherma
+#     altherma_id: heatpump
+#     pin: 25
+#     name: "Heating Control"
+
+# Optional: Smart Grid Control
+# Connect relays to SG1/SG2 inputs on your heat pump
+# select:
+#   - platform: altherma
+#     altherma_id: heatpump
+#     sg1_pin: 26
+#     sg2_pin: 27
+#     name: "Smart Grid Mode"

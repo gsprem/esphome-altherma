@@ -1,0 +1,13 @@
+# ESPAltherma is cloned automatically at build time
+components/altherma/ESPAltherma/
+
+# Auto-generated model definitions content (overwritten at install time)
+# The stub file is tracked, but generated content is not
+components/altherma/definitions/*.json
+
+# Python cache
+__pycache__/
+*.pyc
+
+# ESPHome build artifacts
+.esphome/

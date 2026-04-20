@@ -3,10 +3,7 @@
 An ESPHome external component for monitoring and controlling Daikin Altherma, ROTEX, and HOVAL Belaria heat pumps.
 This component is based on the [ESPAltherma](https://github.com/raomin/ESPAltherma) project, adapted for native ESPHome integration.
 
-
-## Quick Setup
-
-1. **Add the component to your ESPHome configuration:**
+## Quick Start
 
 ```yaml
 external_components:
@@ -31,15 +28,23 @@ sensor:
     altherma_id: heatpump
     label: "Outdoor air temp."
     name: "Outdoor Temperature"
-    
+
+text_sensor:
   - platform: altherma
     altherma_id: heatpump
-    label: "DHW tank temp. (R5T)"
-    name: "DHW Tank Temperature"
+    label: "Operation Mode"
+    name: "Operation Mode"
+
+binary_sensor:
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Thermostat ON/OFF"
+    name: "Thermostat Active"
 ```
 
-2. **Wire your ESP32 to the heat pump's X10A port**
-3. **Flash and enjoy!**
+---
+
+# Configuration
 
 ## Hardware Requirements
 
@@ -57,27 +62,16 @@ sensor:
 | 4 - NC   | Not connected |
 | 5 - GND  | GND |
 
-## Installation
-
-### Add External Component
+## External Component
 
 ```yaml
 external_components:
   - source: https://github.com/gsprem/esphome-altherma
     components: [altherma]
+    refresh: 1d  # Check for updates daily (use "0s" for always latest)
 ```
 
-### Configure UART
-
-```yaml
-uart:
-  tx_pin: GPIO17
-  rx_pin: GPIO16
-  baud_rate: 9600
-  parity: EVEN
-```
-
-### 3. Add Altherma Hub
+## Altherma Hub
 
 ```yaml
 altherma:
@@ -87,34 +81,19 @@ altherma:
   update_interval: 30s
 ```
 
-### 4. Add Sensors
-
-```yaml
-sensor:
-  - platform: altherma
-    altherma_id: heatpump
-    label: "Outdoor air temp."
-    name: "Outdoor Temperature"
-    
-  - platform: altherma
-    altherma_id: heatpump
-    label: "DHW tank temp. (R5T)"
-    name: "DHW Tank Temperature"
-
-text_sensor:
-  - platform: altherma
-    altherma_id: heatpump
-    label: "Operation Mode"
-    name: "Operation Mode"
-```
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `id` | Yes | Unique identifier for the hub |
+| `protocol` | Yes | `I` for newer Daikin, `S` for older ROTEX |
+| `model` | Yes | Heat pump model (see Available Models) |
+| `update_interval` | No | Polling interval (default: 30s) |
 
 ## Available Models
 
-The `model` parameter must match your heat pump exactly. Find your model in the Daikin indoor unit label (e.g., ERGA04DV, EPRA14DV).
+The `model` parameter must match your heat pump exactly. Find your model on the indoor unit label (e.g., ERGA04DV, EPRA14DV).
 
 ### Protocol I Models (Newer Daikin)
 
-**Standard Models:**
 ```
 ALTHERMA(HYBRID)
 ALTHERMA(LT_CA_CB_04-08KW)
@@ -151,23 +130,14 @@ DEFAULT
 EKHWET-BAV3(MULTI DHW TANK)
 ```
 
-### Protocol S Models (Older ROTEX/Daikin)
-
-```
-PROTOCOL_S
-PROTOCOL_S_ROTEX
-```
-
 ### Localized Models
 
 Prefix with `French/`, `German/`, or `Spanish/` for localized sensor labels:
+
 ```
 French/ALTHERMA(HYBRID)
-French/ALTHERMA(LT_CA_CB_04-08KW)
 German/ALTHERMA(HYBRID)
-German/ALTHERMA(LT_CA_CB_04-08KW)
 Spanish/ALTHERMA(HYBRID)
-Spanish/ALTHERMA(LT_CA_CB_04-08KW)
 ... (all standard models available with each prefix)
 ```
 
@@ -180,82 +150,134 @@ Spanish/ALTHERMA(LT_CA_CB_04-08KW)
 
 If unsure, start with `DEFAULT` and check logs for registry responses.
 
-## Building and Flashing
+## Sensors and Labels
 
-### First-time Build
+### Finding Available Labels
 
-```bash
-# Validate configuration
-esphome config your-config.yaml
-
-# Compile firmware
-esphome compile your-config.yaml
-```
-
-### Docker
-
-If using ESPHome in Docker:
-
-```bash
-docker run --rm -v "${PWD}":/config -it ghcr.io/esphome/esphome compile your-config.yaml
-```
-
-### Build Requirements
-
-- ESPHome 2021.8.0 or later (latest stable recommended)
-
-## Finding Available Labels
-
-Labels are defined in ESPAltherma model definition files. To find available labels for your model:
+Labels are defined in ESPAltherma model definition files:
 
 1. Go to [ESPAltherma definition files](https://github.com/raomin/ESPAltherma/tree/main/include/def)
 2. Find your model's `.h` file (e.g., `ALTHERMA(HYBRID).h`)
-3. Each line like `{0x60, 2, 315, 1, -1, "Outdoor air temp."}` defines a label
-4. The last quoted string (e.g., `"Outdoor air temp."`) is the label name
-5. Use these exact label names in the sensor `label:` field
+3. Each line defines a label with this format:
+   ```c
+   {registryID, offset, converterID, dataSize, dataType, "Label Name"}
+   ```
+4. The last quoted string is the label name to use in your config
 
 **Example from model file:**
 ```c
 {0x60, 0, 304, 2, -1, "Leaving water temp. before BUH (R1T)"},
 {0x60, 2, 315, 1, -1, "Outdoor air temp."},
-{0x60, 5, 316, 2, -1, "DHW tank temp. (R5T)"},
+{0x62, 1, 152, 1, -1, "Operation Mode"},
+{0x20, 4, 307, 1,  0, "Thermostat ON/OFF"},
 ```
 
-**Usage:**
+### Choosing Sensor Type
+
+The **`dataType`** field (5th value) tells you which ESPHome platform to use:
+
+| dataType | ESPHome Platform | Description |
+|----------|------------------|-------------|
+| `-1` | `sensor` or `text_sensor` | See converterID below |
+| `0` | `binary_sensor` | ON/OFF boolean value |
+| `1` | `text_sensor` | String/text value |
+
+When `dataType` is `-1`, check the **`converterID`** (3rd value) or **label name**:
+
+| Indicator | ESPHome Platform | Examples |
+|-----------|------------------|----------|
+| Label has units: `(°C)`, `(A)`, `(V)`, `(l/min)`, `(kW)`, `(%)` | `sensor` | "Outdoor air temp.", "Voltage (V)" |
+| Label ends with `temp.` or `temp` | `sensor` | "DHW tank temp. (R5T)" |
+| Label contains "Mode", "type", "Code", "status" | `text_sensor` | "Operation Mode", "Error Code" |
+| Label contains "ON/OFF" | `binary_sensor` | "Thermostat ON/OFF" |
+
+**Quick rule:** If it's a number with units → `sensor`. If it's a state/mode → `text_sensor`. If it's ON/OFF → `binary_sensor`.
+
+### Numeric Sensors
+
+Use `sensor` for temperatures, currents, voltages, flow rates, and other numeric values:
+
 ```yaml
 sensor:
   - platform: altherma
-    label: "Outdoor air temp."  # Must match exactly from model file
+    altherma_id: heatpump
+    label: "Outdoor air temp."
     name: "Outdoor Temperature"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "DHW tank temp. (R5T)"
+    name: "DHW Tank Temperature"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "INV primary current (A)"
+    name: "Inverter Current"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Flow sensor (l/min)"
+    name: "Water Flow"
 ```
 
-Common labels include:
-
-### Temperatures
+Common numeric labels:
 - `Outdoor air temp.`
 - `DHW tank temp. (R5T)`
 - `Leaving water temp. before BUH (R1T)`
 - `Inlet water temp.(R4T)`
 - `Discharge pipe temp.`
-- `Suction pipe temp.`
-
-### Electrical
 - `INV primary current (A)`
 - `Voltage (V)`
+- `Flow sensor (l/min)`
 
-### Status
+### Text Sensors
+
+Use `text_sensor` for modes, status strings, and error codes:
+
+```yaml
+text_sensor:
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Operation Mode"
+    name: "Operation Mode"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "I/U operation mode"
+    name: "Indoor Unit Mode"
+    
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Error Code"
+    name: "Error Code"
+```
+
+Common text labels:
 - `Operation Mode`
 - `I/U operation mode`
 - `Error type`
 - `Error Code`
-- `Thermostat ON/OFF`
 
-### Flow
-- `Flow sensor (l/min)`
+### Binary Sensors
+
+Use `binary_sensor` for ON/OFF states:
+
+```yaml
+binary_sensor:
+  - platform: altherma
+    altherma_id: heatpump
+    label: "Thermostat ON/OFF"
+    name: "Thermostat Active"
+```
+
+Common binary labels:
+- `Thermostat ON/OFF`
+- `Defrost Operation`
+- `DHW Reheat`
 
 ## Optional: Thermostat Relay
 
-Control your heat pump's external thermostat input:
+Control your heat pump's external thermostat input via GPIO:
 
 ```yaml
 switch:
@@ -267,7 +289,7 @@ switch:
 
 ## Optional: Smart Grid
 
-Control Smart Grid modes via SG1/SG2 relays:
+Control Smart Grid modes via SG1/SG2 relay outputs:
 
 ```yaml
 select:
@@ -278,21 +300,12 @@ select:
     name: "Smart Grid Mode"
 ```
 
-Modes:
 | Mode | SG1 | SG2 | Effect |
 |------|-----|-----|--------|
 | Normal | open | open | Normal operation |
 | Forced OFF | open | close | HP forced OFF |
 | Recommended ON | close | open | +5°C setpoint |
 | Forced ON | close | close | DHW to 70°C |
-
-### Updating ESPAltherma Version
-
-The component pins ESPAltherma to commit `281033c8` for stability. To update:
-
-1. Find the new commit SHA from [ESPAltherma releases](https://github.com/raomin/ESPAltherma)
-2. Update `ESPALTHERMA_COMMIT` in `components/altherma/__init__.py`
-3. Re-run the sync script to update model definitions
 
 ## Troubleshooting
 
@@ -331,6 +344,43 @@ The component pins ESPAltherma to commit `281033c8` for stability. To update:
 - Not all labels exist on all heat pump models
 - The label may be commented out (disabled) in the model definition
 - Check the model's `.h` file in ESPAltherma to verify the label exists
+
+---
+
+# Development
+
+## Building and Flashing
+
+### Validate and Compile
+
+```bash
+# Validate configuration
+esphome config your-config.yaml
+
+# Compile firmware
+esphome compile your-config.yaml
+
+# Upload to device
+esphome upload your-config.yaml
+```
+
+### Using Docker
+
+```bash
+docker run --rm -v "${PWD}":/config -it ghcr.io/esphome/esphome compile your-config.yaml
+```
+
+### Requirements
+
+- ESPHome 2021.8.0 or later (latest stable recommended)
+
+## Updating ESPAltherma Version
+
+The component pins ESPAltherma to a specific commit for stability. To update:
+
+1. Find the new commit SHA from [ESPAltherma commits](https://github.com/raomin/ESPAltherma/commits/main)
+2. Update `ESPALTHERMA_COMMIT_HASH` in `components/altherma/installation.py`
+3. Delete the cached ESPAltherma directory to force re-clone
 
 ## License
 

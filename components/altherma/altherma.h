@@ -24,12 +24,6 @@ extern const size_t labelDefs_size;
 namespace esphome {
 namespace altherma {
 
-// Protocol constants
-enum AlthermaProtocol : uint8_t {
-  PROTOCOL_I = 'I',  // Newer Daikin protocol
-  PROTOCOL_S = 'S',  // Older ROTEX protocol
-};
-
 // Serial communication constants
 static const uint32_t UART_BAUD_RATE = 9600;
 static const uint32_t UART_DATA_BITS = 8;
@@ -42,35 +36,23 @@ static const uint32_t INTER_QUERY_DELAY_MS = 50;
 static constexpr size_t RX_BUFFER_SIZE = 64;
 static constexpr size_t MAX_COMMAND_SIZE = 4;
 
-// Protocol I command codes
-static const uint8_t PROTOCOL_I_CMD_HEADER = 0x03;
-static const uint8_t PROTOCOL_I_CMD_PREFIX = 0x40;
-static const size_t PROTOCOL_I_CMD_LENGTH = 4;
-static const size_t PROTOCOL_I_INITIAL_REPLY_LENGTH = 12;
-static const size_t PROTOCOL_I_LENGTH_BYTE_INDEX = 2;
-static const size_t PROTOCOL_I_DATA_OFFSET = 3;
-
-// Protocol S command codes
-static const uint8_t PROTOCOL_S_CMD_HEADER = 0x02;
-static const size_t PROTOCOL_S_CMD_LENGTH = 3;
-static const size_t PROTOCOL_S_DATA_OFFSET = 1;
+// Protocol I command codes (Daikin Altherma protocol)
+static const uint8_t CMD_HEADER = 0x03;
+static const uint8_t CMD_PREFIX = 0x40;
+static const size_t CMD_LENGTH = 4;
+static const size_t INITIAL_REPLY_LENGTH = 12;
+static const size_t LENGTH_BYTE_INDEX = 2;
+static const size_t DATA_OFFSET = 3;
 
 // Error response codes
 static const uint8_t ERROR_RESPONSE_BYTE1 = 0x15;
 static const uint8_t ERROR_RESPONSE_BYTE2 = 0xEA;
 
-// Protocol S registry-specific reply lengths
-static const uint8_t PROTOCOL_S_REG_0x50 = 0x50;
-static const uint8_t PROTOCOL_S_REG_0x56 = 0x56;
-static const size_t PROTOCOL_S_REG_0x50_LENGTH = 6;
-static const size_t PROTOCOL_S_REG_0x56_LENGTH = 4;
-static const size_t PROTOCOL_S_DEFAULT_LENGTH = 18;
-
 /** 
  * @brief Main component for Altherma heat pump integration.
  * 
- * This component manages serial communication with Daikin Altherma heat pumps,
- * queries registry values, and publishes data to ESPHome sensors.
+ * This component manages serial communication with Daikin Altherma heat pumps
+ * using Protocol I, queries registry values, and publishes data to ESPHome sensors.
  */
 class AlthermaComponent : public PollingComponent, public uart::UARTDevice {
  public:
@@ -83,17 +65,14 @@ class AlthermaComponent : public PollingComponent, public uart::UARTDevice {
   void dump_config() override;
   float get_setup_priority() const override { return setup_priority::DATA; }
 
-  /** @brief Set the protocol to use for communication. */
-  void set_protocol(AlthermaProtocol protocol) { this->protocol_ = protocol; }
-
-  /** @brief Register a numeric sensor by label name. */
-  void register_sensor(const std::string &label, sensor::Sensor *sensor);
+  /** @brief Register a numeric sensor by parameter_id. */
+  void register_sensor(const std::string &parameter_id, sensor::Sensor *sensor);
   
-  /** @brief Register a binary sensor by label name. */
-  void register_binary_sensor(const std::string &label, binary_sensor::BinarySensor *sensor);
+  /** @brief Register a binary sensor by parameter_id. */
+  void register_binary_sensor(const std::string &parameter_id, binary_sensor::BinarySensor *sensor);
   
-  /** @brief Register a text sensor by label name. */
-  void register_text_sensor(const std::string &label, text_sensor::TextSensor *sensor);
+  /** @brief Register a text sensor by parameter_id. */
+  void register_text_sensor(const std::string &parameter_id, text_sensor::TextSensor *sensor);
 
  protected:
   // ==================== CRC & Protocol Helpers ====================
@@ -105,13 +84,6 @@ class AlthermaComponent : public PollingComponent, public uart::UARTDevice {
    * @return CRC checksum (bitwise NOT of sum).
    */
   uint8_t calculate_crc_(const uint8_t *data, size_t len) const;
-  
-  /**
-   * @brief Get expected reply length for a registry query.
-   * @param registry_id Registry ID being queried.
-   * @return Expected initial reply length in bytes.
-   */
-  int get_reply_length_(uint8_t registry_id) const;
   
   // ==================== Command & Response Handling ====================
   
@@ -172,24 +144,24 @@ class AlthermaComponent : public PollingComponent, public uart::UARTDevice {
   
   /**
    * @brief Publish value to a numeric sensor if registered.
-   * @param label Sensor label.
+   * @param parameter_id Sensor parameter_id (matches LabelDef.label in ESPAltherma).
    * @param value String value from converter.
    */
-  void publish_sensor_(const char *label, const char *value);
+  void publish_sensor_(const char *parameter_id, const char *value);
   
   /**
    * @brief Publish value to a binary sensor if registered.
-   * @param label Sensor label.
+   * @param parameter_id Sensor parameter_id (matches LabelDef.label in ESPAltherma).
    * @param value String value from converter.
    */
-  void publish_binary_sensor_(const char *label, const char *value);
+  void publish_binary_sensor_(const char *parameter_id, const char *value);
   
   /**
    * @brief Publish value to a text sensor if registered.
-   * @param label Sensor label.
+   * @param parameter_id Sensor parameter_id (matches LabelDef.label in ESPAltherma).
    * @param value String value from converter.
    */
-  void publish_text_sensor_(const char *label, const char *value);
+  void publish_text_sensor_(const char *parameter_id, const char *value);
   
   /**
    * @brief Check if converter is initialized.
@@ -197,16 +169,13 @@ class AlthermaComponent : public PollingComponent, public uart::UARTDevice {
    */
   bool is_converter_ready_() const { return this->converter_ != nullptr; }
 
-  // Configuration
-  AlthermaProtocol protocol_{PROTOCOL_I};
-  
   // Converter instance from ESPAltherma (instantiated in cpp)
   Converter *converter_;
   
   // Registries to query (deduplicated list)
   std::vector<uint8_t> unique_registries_;
   
-  // Registered sensors (keyed by label)
+  // Registered sensors (keyed by parameter_id)
   std::map<std::string, sensor::Sensor *> sensors_;
   std::map<std::string, binary_sensor::BinarySensor *> binary_sensors_;
   std::map<std::string, text_sensor::TextSensor *> text_sensors_;

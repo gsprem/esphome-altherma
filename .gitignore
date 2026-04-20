@@ -9,5 +9,8 @@ components/altherma/definitions/*.json
 __pycache__/
 *.pyc
 
+# Virtual environment
+.venv/
+
 # ESPHome build artifacts
 .esphome/

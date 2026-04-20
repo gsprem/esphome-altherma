@@ -115,13 +115,12 @@ void AlthermaComponent::update() {
     if (this->query_registry_(registry_id, this->rx_buffer_, len)) {
       // Process data using ESPAltherma's converter
       // We iterate ourselves since ESPAltherma's getLabels uses range-for on labelDefs
-      const unsigned int offset = (this->protocol_ == PROTOCOL_S) ? PROTOCOL_S_DATA_OFFSET : PROTOCOL_I_DATA_OFFSET;
       const char reg_id_signed = static_cast<char>(registry_id);
 
       for (size_t i = 0; i < labelDefs_size; i++) {
         if (labelDefs[i].registryID == reg_id_signed) {
           // Bounds check for buffer access
-          const size_t data_offset = labelDefs[i].offset + offset;
+          const size_t data_offset = labelDefs[i].offset + DATA_OFFSET;
           if (data_offset < len) {
             unsigned char *input = this->rx_buffer_ + data_offset;
             this->converter_->convert(&labelDefs[i], input);
@@ -145,7 +144,7 @@ void AlthermaComponent::update() {
 
 void AlthermaComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "Altherma Heat Pump:");
-  ESP_LOGCONFIG(TAG, "  Protocol: %c", this->protocol_);
+  ESP_LOGCONFIG(TAG, "  Protocol: I");
   ESP_LOGCONFIG(TAG, "  Unique registries: %d", this->unique_registries_.size());
   ESP_LOGCONFIG(TAG, "  Sensors: %d", this->sensors_.size());
   ESP_LOGCONFIG(TAG, "  Binary sensors: %d", this->binary_sensors_.size());
@@ -156,26 +155,26 @@ void AlthermaComponent::dump_config() {
 
 // ==================== Sensor Registration ====================
 
-void AlthermaComponent::register_sensor(const std::string &label, sensor::Sensor *sensor) {
+void AlthermaComponent::register_sensor(const std::string &parameter_id, sensor::Sensor *sensor) {
   if (sensor != nullptr) {
-    this->sensors_[label] = sensor;
-    ESP_LOGV(TAG, "Registered sensor: %s", label.c_str());
+    this->sensors_[parameter_id] = sensor;
+    ESP_LOGV(TAG, "Registered sensor: %s", parameter_id.c_str());
   }
 }
 
-void AlthermaComponent::register_binary_sensor(const std::string &label,
+void AlthermaComponent::register_binary_sensor(const std::string &parameter_id,
                                                 binary_sensor::BinarySensor *sensor) {
   if (sensor != nullptr) {
-    this->binary_sensors_[label] = sensor;
-    ESP_LOGV(TAG, "Registered binary sensor: %s", label.c_str());
+    this->binary_sensors_[parameter_id] = sensor;
+    ESP_LOGV(TAG, "Registered binary sensor: %s", parameter_id.c_str());
   }
 }
 
-void AlthermaComponent::register_text_sensor(const std::string &label,
+void AlthermaComponent::register_text_sensor(const std::string &parameter_id,
                                               text_sensor::TextSensor *sensor) {
   if (sensor != nullptr) {
-    this->text_sensors_[label] = sensor;
-    ESP_LOGV(TAG, "Registered text sensor: %s", label.c_str());
+    this->text_sensors_[parameter_id] = sensor;
+    ESP_LOGV(TAG, "Registered text sensor: %s", parameter_id.c_str());
   }
 }
 
@@ -193,39 +192,15 @@ uint8_t AlthermaComponent::calculate_crc_(const uint8_t *data, size_t len) const
   return ~crc;  // Bitwise NOT
 }
 
-int AlthermaComponent::get_reply_length_(uint8_t registry_id) const {
-  if (this->protocol_ == PROTOCOL_I) {
-    // Protocol I: Initial length, actual length is in response byte 2
-    return PROTOCOL_I_INITIAL_REPLY_LENGTH;
-  } else {
-    // Protocol S: Fixed lengths based on registry ID
-    switch (registry_id) {
-      case PROTOCOL_S_REG_0x50:
-        return PROTOCOL_S_REG_0x50_LENGTH;
-      case PROTOCOL_S_REG_0x56:
-        return PROTOCOL_S_REG_0x56_LENGTH;
-      default:
-        return PROTOCOL_S_DEFAULT_LENGTH;
-    }
-  }
-}
-
 // ==================== Command & Response Handling ====================
 
 void AlthermaComponent::build_command_(uint8_t registry_id, uint8_t *cmd, size_t &cmd_len) const {
-  if (this->protocol_ == PROTOCOL_I) {
-    cmd[0] = PROTOCOL_I_CMD_HEADER;
-    cmd[1] = PROTOCOL_I_CMD_PREFIX;
-    cmd[2] = registry_id;
-    cmd[3] = this->calculate_crc_(cmd, 3);
-    cmd_len = PROTOCOL_I_CMD_LENGTH;
-  } else {
-    // Protocol S
-    cmd[0] = PROTOCOL_S_CMD_HEADER;
-    cmd[1] = registry_id;
-    cmd[2] = this->calculate_crc_(cmd, 2);
-    cmd_len = PROTOCOL_S_CMD_LENGTH;
-  }
+  // Protocol I command format
+  cmd[0] = CMD_HEADER;
+  cmd[1] = CMD_PREFIX;
+  cmd[2] = registry_id;
+  cmd[3] = this->calculate_crc_(cmd, 3);
+  cmd_len = CMD_LENGTH;
 }
 
 bool AlthermaComponent::read_response_(uint8_t *buffer, size_t &len, uint32_t start_time) {
@@ -242,9 +217,9 @@ bool AlthermaComponent::read_response_(uint8_t *buffer, size_t &len, uint32_t st
 
       buffer[len++] = this->read();
 
-      // For Protocol I, update expected length from response byte 2
-      if (this->protocol_ == PROTOCOL_I && len == PROTOCOL_I_LENGTH_BYTE_INDEX + 1) {
-        expected_len = buffer[PROTOCOL_I_LENGTH_BYTE_INDEX] + 2;
+      // Update expected length from response byte 2
+      if (len == LENGTH_BYTE_INDEX + 1) {
+        expected_len = buffer[LENGTH_BYTE_INDEX] + 2;
         
         // Validate expected length doesn't exceed buffer
         if (expected_len > RX_BUFFER_SIZE) {
@@ -311,7 +286,7 @@ bool AlthermaComponent::query_registry_(uint8_t registry_id, uint8_t *buffer, si
 
   // Read response
   const uint32_t start_time = millis();
-  len = this->get_reply_length_(registry_id);
+  len = INITIAL_REPLY_LENGTH;
   
   if (!this->read_response_(buffer, len, start_time)) {
     return false;
@@ -357,8 +332,8 @@ bool AlthermaComponent::parse_numeric_value_(const char *str, float &value) cons
 
 // ==================== Data Publishing ====================
 
-void AlthermaComponent::publish_sensor_(const char *label, const char *value) {
-  auto sensor_it = this->sensors_.find(label);
+void AlthermaComponent::publish_sensor_(const char *parameter_id, const char *value) {
+  auto sensor_it = this->sensors_.find(parameter_id);
   if (sensor_it == this->sensors_.end() || sensor_it->second == nullptr) {
     return;  // Sensor not registered
   }
@@ -366,12 +341,12 @@ void AlthermaComponent::publish_sensor_(const char *label, const char *value) {
   float num_value = 0.0f;
   if (this->parse_numeric_value_(value, num_value)) {
     sensor_it->second->publish_state(num_value);
-    ESP_LOGV(TAG, "Published sensor '%s': %.2f", label, num_value);
+    ESP_LOGV(TAG, "Published sensor '%s': %.2f", parameter_id, num_value);
   }
 }
 
-void AlthermaComponent::publish_binary_sensor_(const char *label, const char *value) {
-  auto binary_it = this->binary_sensors_.find(label);
+void AlthermaComponent::publish_binary_sensor_(const char *parameter_id, const char *value) {
+  auto binary_it = this->binary_sensors_.find(parameter_id);
   if (binary_it == this->binary_sensors_.end() || binary_it->second == nullptr) {
     return;  // Sensor not registered
   }
@@ -390,17 +365,17 @@ void AlthermaComponent::publish_binary_sensor_(const char *label, const char *va
   }
   
   binary_it->second->publish_state(state);
-  ESP_LOGV(TAG, "Published binary sensor '%s': %s", label, state ? "ON" : "OFF");
+  ESP_LOGV(TAG, "Published binary sensor '%s': %s", parameter_id, state ? "ON" : "OFF");
 }
 
-void AlthermaComponent::publish_text_sensor_(const char *label, const char *value) {
-  auto text_it = this->text_sensors_.find(label);
+void AlthermaComponent::publish_text_sensor_(const char *parameter_id, const char *value) {
+  auto text_it = this->text_sensors_.find(parameter_id);
   if (text_it == this->text_sensors_.end() || text_it->second == nullptr) {
     return;  // Sensor not registered
   }
 
   text_it->second->publish_state(value);
-  ESP_LOGV(TAG, "Published text sensor '%s': %s", label, value);
+  ESP_LOGV(TAG, "Published text sensor '%s': %s", parameter_id, value);
 }
 
 void AlthermaComponent::publish_values_() {
@@ -410,9 +385,11 @@ void AlthermaComponent::publish_values_() {
   }
 
   // Iterate through all labels and publish to registered sensors
+  // Key format: "registryID_offset" (e.g., "96_2") - matches Python make_sensor_key()
+  char sensor_key[16];
+  
   for (size_t i = 0; i < labelDefs_size; i++) {
     const LabelDef &def = labelDefs[i];
-    const char *label = def.label;
     const char *value = def.asString;
     
     // Skip empty values
@@ -420,10 +397,16 @@ void AlthermaComponent::publish_values_() {
       continue;
     }
     
+    // Construct unique key from registry_id and offset
+    // Cast to uint8_t since registryID is signed char but represents 0x00-0xFF
+    snprintf(sensor_key, sizeof(sensor_key), "%u_%u", 
+             static_cast<uint8_t>(def.registryID), 
+             static_cast<uint8_t>(def.offset));
+    
     // Publish to all registered sensor types
-    this->publish_sensor_(label, value);
-    this->publish_binary_sensor_(label, value);
-    this->publish_text_sensor_(label, value);
+    this->publish_sensor_(sensor_key, value);
+    this->publish_binary_sensor_(sensor_key, value);
+    this->publish_text_sensor_(sensor_key, value);
   }
 }
 

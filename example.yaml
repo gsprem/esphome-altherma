@@ -1,7 +1,8 @@
 # ESPHome Altherma Heat Pump Configuration Example
 # 
 # This example shows how to configure the Altherma component for your heat pump.
-# Adjust the model, GPIO pins, and sensors according to your setup.
+# Copy parameter_id values directly from ESPAltherma definition files.
+# See: https://github.com/raomin/ESPAltherma/tree/main/include/def
 
 esphome:
   name: altherma-heatpump
@@ -49,6 +50,7 @@ external_components:
     components: [altherma]
     refresh: 0s  # Always fetch latest (or use "1d" for daily)
 
+
 # UART configuration for X10A connection
 # Default pins for ESP32: RX=GPIO16, TX=GPIO17
 uart:
@@ -60,89 +62,138 @@ uart:
 # Altherma Heat Pump Hub
 altherma:
   id: heatpump
-  protocol: I          # Use 'S' for older ROTEX/Daikin models
-  model: "Altherma(ERGA D EHV-EHB-EHVZ DA series 04-08kW)"  # Select your model
   update_interval: 30s
 
 # Temperature Sensors
 sensor:
   - platform: altherma
     altherma_id: heatpump
-    label: "Outdoor air temp."
+    parameter_id: '{0x20,0,105,2,1,"R1T-Outdoor air temp."}'
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"
     name: "Outdoor Temperature"
-    
+
   - platform: altherma
     altherma_id: heatpump
-    label: "DHW tank temp. (R5T)"
+    parameter_id: '{0x61,10,105,2,1,"DHW tank temp. (R5T)"}'
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"
     name: "DHW Tank Temperature"
-    
+
   - platform: altherma
     altherma_id: heatpump
-    label: "Leaving water temp. before BUH (R1T)"
+    parameter_id: '{0x61,2,105,2,1,"Leaving water temp. before BUH (R1T)"}'
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"    
     name: "Leaving Water Temperature"
-    
+
   - platform: altherma
     altherma_id: heatpump
-    label: "Inlet water temp.(R4T)"
+    parameter_id: '{0x61,8,105,2,1,"Inlet water temp.(R4T)"}'
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"    
     name: "Return Water Temperature"
-    
+
   - platform: altherma
     altherma_id: heatpump
-    label: "INV primary current (A)"
+    parameter_id: '{0x21,0,105,2,-1,"INV primary current (A)"}'
     name: "Inverter Current"
-    
+    device_class: "current"
+    unit_of_measurement: "A"
+    accuracy_decimals: 1
+
   - platform: altherma
     altherma_id: heatpump
-    label: "Voltage (V)"
+    parameter_id: '{0x30,0,152,1,-1,"INV frequency (rps)"}'
+    name: "Inverter Frequency (rps)"
+    device_class: "frequency"
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 0
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x21,4,101,2,-1,"Voltage (N-phase) (V)"}'
     name: "Voltage"
-    
+    device_class: "voltage"
+    unit_of_measurement: "V"
+    accuracy_decimals: 0
+
   - platform: altherma
     altherma_id: heatpump
-    label: "Flow sensor (l/min)"
+    parameter_id: '{0x62,9,105,2,-1,"Flow sensor (l/min)"}'
     name: "Water Flow"
+    device_class: "volume_flow_rate"
+    unit_of_measurement: "L/min"
+    accuracy_decimals: 1
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x62,11,105,1,2,"Water pressure"}'
+    accuracy_decimals: 1
+    name: "Water pressure (bar)"
+    device_class: "pressure"
+    unit_of_measurement : "bar"
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x30,0,211,1,-1,"Fan 1 (10 rpm)"}'
+    name: "Fan"
+    device_class: "frequency"
+    unit_of_measurement: "Hz"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 10   # multiply by 10
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x64,14,152,1,1,"Target delta T heating"}'
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"    
+    name: "Target delta T heating"
 
 # Text Sensors for status/modes
 text_sensor:
   - platform: altherma
     altherma_id: heatpump
-    label: "Operation Mode"
+    parameter_id: '{0x10,0,217,1,-1,"Operation Mode"}'
     name: "Operation Mode"
-    
+
   - platform: altherma
     altherma_id: heatpump
-    label: "I/U operation mode"
+    parameter_id: '{0x60,2,315,1,-1,"I/U operation mode"}'
     name: "Indoor Unit Mode"
-    
+
   - platform: altherma
     altherma_id: heatpump
-    label: "Error type"
+    parameter_id: '{0x60,5,203,1,-1,"Error type"}'
     name: "Error Type"
-    
+
   - platform: altherma
     altherma_id: heatpump
-    label: "Error Code"
+    parameter_id: '{0x60,3,204,1,-1,"Error Code"}'
     name: "Error Code"
 
-# Binary Sensors for ON/OFF states
-binary_sensor:
   - platform: altherma
     altherma_id: heatpump
-    label: "Thermostat ON/OFF"
-    name: "Thermostat Active"
+    parameter_id: '{0x10,1,304,1,-1,"Defrost Operation"}'
+    name: "Defrost Operation"
 
-# Optional: Thermostat Relay Control
-# Connect a relay to this pin to control the external thermostat input
-# switch:
-#   - platform: altherma
-#     altherma_id: heatpump
-#     pin: 25
-#     name: "Heating Control"
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x62,2,304,1,-1,"Powerful DHW Operation. ON/OFF"}'
+    name: "Powerful DHW Operation"
 
-# Optional: Smart Grid Control
-# Connect relays to SG1/SG2 inputs on your heat pump
-# select:
-#   - platform: altherma
-#     altherma_id: heatpump
-#     sg1_pin: 26
-#     sg2_pin: 27
-#     name: "Smart Grid Mode"
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x60,12,301,1,-1,"Water pump operation"}'
+    name: "Water pump operation"
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x62,8,302,1,-1,"Circulation pump operation"}'
+    name: "Circulation pump operation"	

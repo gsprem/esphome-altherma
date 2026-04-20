@@ -1,6 +1,6 @@
 # ESPHome Altherma Component
 
-An ESPHome external component for monitoring and controlling Daikin Altherma, ROTEX, and HOVAL Belaria heat pumps.
+An ESPHome external component for monitoring Daikin Altherma heat pumps.
 This component is based on the [ESPAltherma](https://github.com/raomin/ESPAltherma) project, adapted for native ESPHome integration.
 
 ## Quick Start
@@ -19,27 +19,30 @@ uart:
 
 altherma:
   id: heatpump
-  protocol: I 
-  model: "ALTHERMA(HYBRID)"
   update_interval: 30s
 
 sensor:
   - platform: altherma
     altherma_id: heatpump
-    label: "Outdoor air temp."
+    parameter_id: '{0x20,0,105,2,1,"R1T-Outdoor air temp."}'
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"
     name: "Outdoor Temperature"
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x62,11,105,1,2,"Water pressure"}'
+    accuracy_decimals: 1
+    device_class: "pressure"
+    unit_of_measurement: "bar"
+    name: "Water pressure (bar)"
 
 text_sensor:
   - platform: altherma
     altherma_id: heatpump
-    label: "Operation Mode"
+    parameter_id: '{0x10,0,217,1,-1,"Operation Mode"}'
     name: "Operation Mode"
-
-binary_sensor:
-  - platform: altherma
-    altherma_id: heatpump
-    label: "Thermostat ON/OFF"
-    name: "Thermostat Active"
 ```
 
 ---
@@ -76,161 +79,119 @@ external_components:
 ```yaml
 altherma:
   id: heatpump
-  protocol: I        # Use 'S' for older ROTEX models
-  model: "ALTHERMA(HYBRID)"
   update_interval: 30s
 ```
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `id` | Yes | Unique identifier for the hub |
-| `protocol` | Yes | `I` for newer Daikin, `S` for older ROTEX |
-| `model` | Yes | Heat pump model (see Available Models) |
 | `update_interval` | No | Polling interval (default: 30s) |
 
-## Available Models
+## Finding Parameters (LabelDef Format)
 
-The `model` parameter must match your heat pump exactly. Find your model on the indoor unit label (e.g., ERGA04DV, EPRA14DV).
+The `parameter_id` field uses the **LabelDef format** copied directly from ESPAltherma definition files. This format explicitly specifies the exact register, offset, and converter to use.
 
-### Protocol I Models (Newer Daikin)
-
-```
-ALTHERMA(HYBRID)
-ALTHERMA(LT_CA_CB_04-08KW)
-ALTHERMA(LT_CA_CB_11-16KW)
-ALTHERMA(LT_MULTI_DHWHP)
-ALTHERMA(LT_MULTI_HYBRID)
-Altherma(EBLA-EDLA D series 4-8kW Monobloc)
-Altherma(EBLA-EDLA D series 9-16kW Monobloc)
-Altherma(EGSAH-X-EWSAH-X-D series 6-10kW GEO3)
-Altherma(EGSQH-A series 10kW GEO2)
-Altherma(EPGA D EAB-EAV-EAVZ D(J) series 11-16kW)
-Altherma(EPRA D ETSH-X 16P30-50 D series 14-16kW-ECH2O)
-Altherma(EPRA D ETV16-ETB16-ETVZ16 D series 14-16kW)
-Altherma(EPRA D_D7 ETSH-X 16P30-50 E_E7 series 14-18kW-ECH2O)
-Altherma(EPRA D_D7 ETV16-ETB16-ETVZ16 E_E7 series 14-18kW)
-Altherma(EPRA E ETSH-X 16P30-50 E series 8-12kW-ECH2O)
-Altherma(EPRA E ETV16-ETB16-ETVZ16 E_EJ series 8-12kW)
-Altherma(ERGA D EHSH-X P30-50 D series 04-08kW-ECH2O)
-Altherma(ERGA D EHV-EHB-EHVZ DA series 04-08kW)
-Altherma(ERGA D EHV-EHB-EHVZ DJ series 04-08 kW)
-Altherma(ERGA E EHSH-X P30-50 E_EF series 04-08kW-ECH2O)
-Altherma(ERGA E EHV-EHB-EHVZ E_EJ series 04-08kW)
-Altherma(ERLA D EBSH-X 16P30-50 D SERIES 11-16kW-ECH2O)
-Altherma(ERLA D EBV-EBB-EBVZ D SERIES 11-16kW)
-Altherma(ERLA03 D EHFH-EHFZ DJ series 3kW)
-Altherma(LT_CB_04-08kW Bizone)
-Altherma(LT_CB_11-16kW Bizone)
-Altherma(LT_EBLQ-EBLQ-CA series 5-7kW Monobloc)
-Altherma(LT_EBLQ-EDLQ-CA series 11-16kW Monobloc)
-Daikin Mini chiller(EWAA-EWYA D series 4-8kW)
-Daikin Mini chiller(EWAA-EWYA D series 9-16kW)
-Daikin Mini chiller(EWAQ-EWYQ B series 4-8kW)
-DEFAULT
-EKHWET-BAV3(MULTI DHW TANK)
-```
-
-### Localized Models
-
-Prefix with `French/`, `German/`, or `Spanish/` for localized sensor labels:
-
-```
-French/ALTHERMA(HYBRID)
-German/ALTHERMA(HYBRID)
-Spanish/ALTHERMA(HYBRID)
-... (all standard models available with each prefix)
-```
-
-### Finding Your Model
-
-1. Check the indoor unit label for model code (e.g., ERGA04DV)
-2. Match the prefix: ERGA, EPRA, EBLA, EDLA, EBLQ, etc.
-3. Match the power rating: 04=4kW, 08=8kW, 14=14kW, etc.
-4. Match the series letter: D, E, etc.
-
-If unsure, start with `DEFAULT` and check logs for registry responses.
-
-## Sensors and Labels
-
-### Finding Available Labels
-
-Labels are defined in ESPAltherma model definition files:
+### Step 1: Find Your Model's Definition File
 
 1. Go to [ESPAltherma definition files](https://github.com/raomin/ESPAltherma/tree/main/include/def)
 2. Find your model's `.h` file (e.g., `ALTHERMA(HYBRID).h`)
-3. Each line defines a label with this format:
-   ```c
-   {registryID, offset, converterID, dataSize, dataType, "Label Name"}
-   ```
-4. The last quoted string is the label name to use in your config
 
-**Example from model file:**
+### Step 2: Copy the LabelDef Entry
+
+Each line in the definition file has this format:
+
 ```c
-{0x60, 0, 304, 2, -1, "Leaving water temp. before BUH (R1T)"},
-{0x60, 2, 315, 1, -1, "Outdoor air temp."},
-{0x62, 1, 152, 1, -1, "Operation Mode"},
-{0x20, 4, 307, 1,  0, "Thermostat ON/OFF"},
+{registryID, offset, converterID, dataSize, dataType, "Label"}
 ```
 
-### Choosing Sensor Type
+**Example from ALTHERMA(HYBRID).h:**
+```c
+{0x60,0,304,2,-1,"Leaving water temp. before BUH (R1T)"},
+{0x60,2,315,1,-1,"Outdoor air temp."},
+{0x62,1,152,1,-1,"Operation Mode"},
+{0x20,4,307,1,0,"Thermostat ON/OFF"},
+```
 
-The **`dataType`** field (5th value) tells you which ESPHome platform to use:
+### Step 3: Use in Your Config
 
-| dataType | ESPHome Platform | Description |
-|----------|------------------|-------------|
-| `-1` | `sensor` or `text_sensor` | See converterID below |
-| `0` | `binary_sensor` | ON/OFF boolean value |
-| `1` | `text_sensor` | String/text value |
-
-When `dataType` is `-1`, check the **`converterID`** (3rd value) or **label name**:
-
-| Indicator | ESPHome Platform | Examples |
-|-----------|------------------|----------|
-| Label has units: `(°C)`, `(A)`, `(V)`, `(l/min)`, `(kW)`, `(%)` | `sensor` | "Outdoor air temp.", "Voltage (V)" |
-| Label ends with `temp.` or `temp` | `sensor` | "DHW tank temp. (R5T)" |
-| Label contains "Mode", "type", "Code", "status" | `text_sensor` | "Operation Mode", "Error Code" |
-| Label contains "ON/OFF" | `binary_sensor` | "Thermostat ON/OFF" |
-
-**Quick rule:** If it's a number with units → `sensor`. If it's a state/mode → `text_sensor`. If it's ON/OFF → `binary_sensor`.
-
-### Numeric Sensors
-
-Use `sensor` for temperatures, currents, voltages, flow rates, and other numeric values:
+Copy the entire `{...}` part as your `parameter_id`:
 
 ```yaml
 sensor:
   - platform: altherma
     altherma_id: heatpump
-    label: "Outdoor air temp."
+    parameter_id: '{0x60,2,315,1,-1,"Outdoor air temp."}'
+    name: "Outdoor Temperature"
+```
+
+> **Important:** The parameter_id must be quoted in YAML since it contains special characters.
+
+**Override dataType if needed:** If ESPAltherma's dataType doesn't match the actual data type, you can override it:
+
+```yaml
+# If ESPAltherma says dataType=1 but it's actually numeric:
+sensor:
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x20,0,105,2,-1,"R1T-Outdoor air temp."}'  # Changed 1 to -1
+    name: "Outdoor Temperature"
+```
+
+### LabelDef Field Reference
+
+| Position | Field | Description |
+|----------|-------|-------------|
+| 1 | registryID | Heat pump registry address (hex, e.g., 0x60) |
+| 2 | offset | Byte offset within registry data |
+| 3 | converterID | ESPAltherma converter function number |
+| 4 | dataSize | Number of bytes to read (1, 2, or 4) |
+| 5 | dataType | Sensor type hint (see table below) |
+| 6 | label | Human-readable name |
+
+## Choosing Sensor Type
+
+The **dataType** field (5th value) indicates which ESPHome platform to use:
+
+| dataType | ESPHome Platform | Description |
+|----------|------------------|-------------|
+| `-1` | `sensor` or `text_sensor` | See label content below |
+| `0` | `binary_sensor` | ON/OFF boolean value |
+| `1` | `text_sensor` | String/text value |
+| `2` | `sensor` | Numeric value |
+
+When dataType is `-1`, check the label name:
+
+| Label Contains | Platform | Examples |
+|----------------|----------|----------|
+| `temp`, units like `(°C)`, `(A)`, `(V)`, `(kW)`, `(%)` | `sensor` | "Outdoor air temp.", "Voltage (V)" |
+| `Mode`, `type`, `Code`, `status` | `text_sensor` | "Operation Mode", "Error Code" |
+| `ON/OFF` | `binary_sensor` | "Thermostat ON/OFF" |
+
+**Quick rule:** Numbers with units → `sensor`. States/modes → `text_sensor`. ON/OFF → `binary_sensor`.
+
+## Numeric Sensors
+
+Use `sensor` for temperatures, currents, voltages, and other numeric values:
+
+```yaml
+sensor:
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x60,2,315,1,-1,"Outdoor air temp."}'
     name: "Outdoor Temperature"
     
   - platform: altherma
     altherma_id: heatpump
-    label: "DHW tank temp. (R5T)"
+    parameter_id: '{0x60,10,303,2,-1,"DHW tank temp. (R5T)"}'
     name: "DHW Tank Temperature"
     
   - platform: altherma
     altherma_id: heatpump
-    label: "INV primary current (A)"
+    parameter_id: '{0x60,7,316,1,-1,"INV primary current (A)"}'
     name: "Inverter Current"
-    
-  - platform: altherma
-    altherma_id: heatpump
-    label: "Flow sensor (l/min)"
-    name: "Water Flow"
 ```
 
-Common numeric labels:
-- `Outdoor air temp.`
-- `DHW tank temp. (R5T)`
-- `Leaving water temp. before BUH (R1T)`
-- `Inlet water temp.(R4T)`
-- `Discharge pipe temp.`
-- `INV primary current (A)`
-- `Voltage (V)`
-- `Flow sensor (l/min)`
-
-### Text Sensors
+## Text Sensors
 
 Use `text_sensor` for modes, status strings, and error codes:
 
@@ -238,27 +199,16 @@ Use `text_sensor` for modes, status strings, and error codes:
 text_sensor:
   - platform: altherma
     altherma_id: heatpump
-    label: "Operation Mode"
+    parameter_id: '{0x62,1,152,1,-1,"Operation Mode"}'
     name: "Operation Mode"
     
   - platform: altherma
     altherma_id: heatpump
-    label: "I/U operation mode"
-    name: "Indoor Unit Mode"
-    
-  - platform: altherma
-    altherma_id: heatpump
-    label: "Error Code"
+    parameter_id: '{0x60,3,204,1,-1,"Error Code"}'
     name: "Error Code"
 ```
 
-Common text labels:
-- `Operation Mode`
-- `I/U operation mode`
-- `Error type`
-- `Error Code`
-
-### Binary Sensors
+## Binary Sensors
 
 Use `binary_sensor` for ON/OFF states:
 
@@ -266,14 +216,9 @@ Use `binary_sensor` for ON/OFF states:
 binary_sensor:
   - platform: altherma
     altherma_id: heatpump
-    label: "Thermostat ON/OFF"
+    parameter_id: '{0x20,4,307,1,0,"Thermostat ON/OFF"}'
     name: "Thermostat Active"
 ```
-
-Common binary labels:
-- `Thermostat ON/OFF`
-- `Defrost Operation`
-- `DHW Reheat`
 
 ## Optional: Thermostat Relay
 
@@ -309,15 +254,10 @@ select:
 
 ## Troubleshooting
 
-### Validation error: "Unknown model"
-- Model name must match exactly (case-sensitive)
-- Check the Available Models section above
-- Use `DEFAULT` to test basic connectivity
-
-### Validation error: "Unknown label"
-- Sensor label must match exactly as defined in the model
-- Labels are case-sensitive and include punctuation
-- Check logs for available labels in your model
+### Validation error: "Invalid parameter_id format"
+- The parameter_id must be in LabelDef format: `{registry,offset,conv,size,type,"label"}`
+- Copy the exact format from the ESPAltherma definition file
+- Ensure the parameter_id is quoted in YAML
 
 ### No sensor data after compile
 - Verify UART TX/RX pin assignment matches wiring
@@ -336,14 +276,14 @@ select:
 - Check for loose connections
 
 ### 0x15 0xEA errors in logs
-- Heat pump uses Protocol S (older models)
-- Change `protocol: S` in your YAML
-- Use a `PROTOCOL_S` model definition
+- Heat pump returned an error for the registry query
+- Verify the registryID exists for your heat pump model
+- Check the ESPAltherma definition file for your specific model
 
 ### Some sensors always empty
-- Not all labels exist on all heat pump models
-- The label may be commented out (disabled) in the model definition
-- Check the model's `.h` file in ESPAltherma to verify the label exists
+- The parameter might not exist on your heat pump variant
+- Check the definition file - some parameters are commented out (disabled by default)
+- Try a different registryID from your model's definition file
 
 ---
 

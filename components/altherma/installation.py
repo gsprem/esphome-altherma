@@ -1,17 +1,13 @@
 """ESPAltherma Installation Management.
 
-This module handles cloning, validating, and managing the ESPAltherma
-repository as a build-time dependency. Model definitions are generated
-at install time by parsing ESPAltherma header files.
+This module handles cloning and validating the ESPAltherma repository
+as a build-time dependency.
 """
-from typing import List, Dict, Any, Optional
+from typing import List
 import os
-import re
-import json
 import subprocess
 import logging
 import shutil
-from pathlib import Path
 
 import esphome.config_validation as cv
 
@@ -276,155 +272,6 @@ def _is_installation_valid(espaltherma_dir: str) -> bool:
     
     _LOGGER.debug("ESPAltherma found at %s", espaltherma_dir)
     return True
-
-
-# ==================== Definition Generation ====================
-
-
-def _parse_label_def(line: str) -> Optional[Dict[str, Any]]:
-    """Parse a LabelDef line from an ESPAltherma definition file."""
-    is_commented = line.strip().startswith('//')
-    if is_commented:
-        line = line.strip()[2:].strip()
-    
-    pattern = r'^\s*\{(0x[0-9a-fA-F]+|[0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*(-?[0-9]+)\s*,\s*"([^"]+)"\s*\}'
-    match = re.match(pattern, line)
-    if not match:
-        return None
-    
-    registry_id = int(match.group(1), 16) if match.group(1).startswith('0x') else int(match.group(1))
-    return {
-        "registry_id": registry_id,
-        "offset": int(match.group(2)),
-        "conv_id": int(match.group(3)),
-        "data_size": int(match.group(4)),
-        "data_type": int(match.group(5)),
-        "label": match.group(6),
-        "enabled": not is_commented,
-    }
-
-
-def _parse_definition_file(filepath: Path) -> Dict[str, Any]:
-    """Parse an ESPAltherma definition file and extract all LabelDef entries."""
-    labels = []
-    with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-        for line in f:
-            line_stripped = line.strip()
-            if not line_stripped or line_stripped.startswith('#'):
-                continue
-            label_def = _parse_label_def(line_stripped)
-            if label_def:
-                labels.append(label_def)
-    
-    protocol = "S" if "PROTOCOL_S" in filepath.name else "I"
-    return {
-        "name": filepath.stem,
-        "description": filepath.stem,
-        "protocol": protocol,
-        "labels": labels,
-    }
-
-
-def _scan_definition_files(espaltherma_dir: str) -> Dict[str, Dict[str, Any]]:
-    """Scan ESPAltherma include/def directory for all definition files."""
-    def_dir = Path(espaltherma_dir) / "include" / "def"
-    if not def_dir.exists():
-        raise FileNotFoundError(f"Definition directory not found: {def_dir}")
-    
-    models = {}
-    
-    for filepath in def_dir.glob("*.h"):
-        if filepath.name == "labeldef.h":
-            continue
-        try:
-            model = _parse_definition_file(filepath)
-            if model["labels"]:
-                models[model["name"]] = model
-        except Exception as e:
-            _LOGGER.warning("Failed to parse %s: %s", filepath.name, e)
-    
-    for locale_dir in def_dir.iterdir():
-        if locale_dir.is_dir() and locale_dir.name in ["German", "French", "Spanish"]:
-            for filepath in locale_dir.glob("*.h"):
-                try:
-                    model = _parse_definition_file(filepath)
-                    if model["labels"]:
-                        locale_name = f"{locale_dir.name}/{model['name']}"
-                        model["name"] = locale_name
-                        models[locale_name] = model
-                except Exception as e:
-                    _LOGGER.warning("Failed to parse %s/%s: %s", locale_dir.name, filepath.name, e)
-    
-    return models
-
-
-def _generate_definitions_file(models: Dict[str, Dict[str, Any]], output_dir: Path) -> None:
-    """Generate the Python definitions module from parsed models."""
-    output_dir.mkdir(parents=True, exist_ok=True)
-    
-    sorted_models = dict(sorted(models.items()))
-    models_json = json.dumps(sorted_models, indent=4, ensure_ascii=False, sort_keys=True)
-    models_json = models_json.replace(': true', ': True').replace(': false', ': False').replace(': null', ': None')
-    
-    content = '"""Model definitions for Altherma heat pumps.\n\nAuto-generated from ESPAltherma. Do not edit.\n"""\n\nMODELS = '
-    content += models_json + '\n'
-    
-    (output_dir / "__init__.py").write_text(content, encoding='utf-8')
-    _LOGGER.info("Generated model definitions: %d models", len(models))
-    for model_name in sorted(models.keys()):
-        _LOGGER.info("  - %s", model_name)
-
-
-def get_definitions_directory(component_dir: str) -> str:
-    """Get the path to the definitions directory."""
-    return os.path.join(component_dir, "definitions")
-
-
-def _is_definitions_valid(definitions_dir: str) -> bool:
-    """Check if definitions exist and are valid."""
-    init_file = os.path.join(definitions_dir, "__init__.py")
-    if not os.path.isfile(init_file):
-        return False
-    try:
-        with open(init_file, 'r') as f:
-            content = f.read()
-        return 'MODELS' in content and len(content) > 1000
-    except IOError:
-        return False
-
-
-def ensure_definitions(component_dir: str) -> None:
-    """Ensure model definitions are generated from ESPAltherma.
-    
-    Args:
-        component_dir: Path to the component directory.
-        
-    Raises:
-        cv.Invalid: If definitions cannot be generated.
-    """
-    definitions_dir = get_definitions_directory(component_dir)
-    
-    if _is_definitions_valid(definitions_dir):
-        return
-    
-    espaltherma_dir = get_espaltherma_directory(component_dir)
-    
-    if not os.path.isdir(espaltherma_dir):
-        try:
-            _clone_espaltherma_repository(espaltherma_dir)
-        except ESPAlthermaCloneError as e:
-            raise cv.Invalid(str(e)) from e
-    
-    try:
-        _LOGGER.info("Generating model definitions from ESPAltherma...")
-        models = _scan_definition_files(espaltherma_dir)
-        if not models:
-            raise cv.Invalid("No model definitions found in ESPAltherma")
-        _generate_definitions_file(models, Path(definitions_dir))
-    except cv.Invalid:
-        raise
-    except Exception as e:
-        raise cv.Invalid(f"Failed to generate definitions: {e}") from e
 
 
 def ensure_espaltherma(component_dir: str) -> None:

@@ -19,19 +19,18 @@ static NullSerial mqttSerial;
 
 // Include ESPAltherma's converters.h with workarounds:
 // 1. Redirect Serial to our null sink
-// 2. Use dummy labelDefs array for range-for compilation
-// 3. Make buff static to avoid ODR violation
+// 2. Make buff static to avoid ODR violation
 #ifdef Serial
 #undef Serial
 #endif
 #define Serial mqttSerial
 
-static LabelDef labelDefs_dummy_[] = {LabelDef(0, 0, 0, 0, 0, "")};
-#define labelDefs labelDefs_dummy_
 #define buff altherma_converter_buff_
-#include "ESPAltherma/include/converters.h"
+
+// From https://github.com/raomin/ESPAltherma.git 
+// Commit ref 281033c80ec8ba5b758c0cbd17e795fb8aeb3e0f
+#include "ESPAltherma.converters.h"
 #undef buff
-#undef labelDefs
 #undef Serial
 
 namespace esphome {
@@ -379,7 +378,7 @@ void AlthermaComponent::publish_text_sensor_(const char *parameter_id, const cha
 }
 
 void AlthermaComponent::publish_values_() {
-  if (labelDefs == nullptr || labelDefs_size == 0) {
+  if (labelDefs_size == 0) {
     ESP_LOGW(TAG, "No labelDefs available for publishing");
     return;
   }

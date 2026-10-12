@@ -291,37 +291,31 @@ select:
 
 ## Building and Flashing
 
-### Validate and Compile
+### Validate and Compile using Docker
 
 ```bash
 # Validate configuration
-esphome config your-config.yaml
+docker run --rm -v "${PWD}":/config -it ghcr.io/esphome/esphome config simple-example.yaml
 
 # Compile firmware
-esphome compile your-config.yaml
+docker run --rm -v "${PWD}":/config -it ghcr.io/esphome/esphome compile simple-example.yaml
 
 # Upload to device
-esphome upload your-config.yaml
+docker run --rm -v "${PWD}":/config -it ghcr.io/esphome/esphome upload simple-example.yaml
 ```
 
-### Using Docker
+In case of problems delete the .esphome temporary dir.
 
 ```bash
-docker run --rm -v "${PWD}":/config -it ghcr.io/esphome/esphome compile your-config.yaml
+sudo rm -rf .esphome/
 ```
 
-### Requirements
+### Requirements  
 
 - ESPHome 2021.8.0 or later (latest stable recommended)
 
-## Updating ESPAltherma Version
-
-The component pins ESPAltherma to a specific commit for stability. To update:
-
-1. Find the new commit SHA from [ESPAltherma commits](https://github.com/raomin/ESPAltherma/commits/main)
-2. Update `ESPALTHERMA_COMMIT_HASH` in `components/altherma/installation.py`
-3. Delete the cached ESPAltherma directory to force re-clone
-
 ## License
 
-MIT License - see [LICENSE](LICENSE)
+This component is licensed under the MIT License; see [LICENSE](LICENSE).
+
+It includes code from [ESPAltherma](https://github.com/raomin/ESPAltherma) by Raomin, also licensed under the MIT License. See [its license](components/altherma/ESPAltherma/LICENSE).

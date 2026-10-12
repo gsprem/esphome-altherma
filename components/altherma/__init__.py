@@ -12,8 +12,7 @@ from esphome.components import uart
 from esphome.const import CONF_ID
 from esphome.core import CORE
 
-# Import installation and code generation utilities
-from .installation import ensure_espaltherma
+# Import code generation utilities
 from .codegen import generate_labeldefs_from_parameter_ids
 
 # Constants
@@ -90,17 +89,14 @@ def _collect_platform_parameter_ids() -> Set[str]:
 async def to_code(config: Dict[str, Any]) -> None:
     """Generate C++ code for the Altherma component.
     
-    Validates ESPAltherma availability, configures build flags, and
-    generates the labelDefs array from user-specified parameter_ids.
+    Configures build flags and generates the labelDefs array from
+    user-specified parameter_ids.
     
     Args:
         config: Validated configuration dictionary.
     """
-    # Get component directory for ESPAltherma installation
+    # Get component directory for local headers
     component_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Ensure ESPAltherma is available (for converters.h)
-    ensure_espaltherma(component_dir)
     
     # Add include path for ESPAltherma headers
     cg.add_build_flag(f"-I{component_dir}")

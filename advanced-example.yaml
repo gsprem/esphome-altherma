@@ -196,4 +196,4 @@ text_sensor:
   - platform: altherma
     altherma_id: heatpump
     parameter_id: '{0x62,8,302,1,-1,"Circulation pump operation"}'
-    name: "Circulation pump operation"	
+    name: "Circulation pump operation"

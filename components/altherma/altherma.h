@@ -11,8 +11,10 @@
 #include <string>
 #include <unordered_set>
 
-// Include ESPAltherma's label definition (cloned to component dir at build time)
-#include "ESPAltherma/include/labeldef.h"
+// Include ESPAltherma's label definition
+// From https://github.com/raomin/ESPAltherma.git 
+// Commit ref 281033c80ec8ba5b758c0cbd17e795fb8aeb3e0f
+#include "ESPAltherma.labeldef.h"
 
 // Forward declare Converter (defined in converters.h, included in .cpp only)
 class Converter;

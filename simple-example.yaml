@@ -1,0 +1,105 @@
+# Simple ESPHome Altherma Configuration (No Secrets Required)
+# This is a minimal configuration example for testing
+
+esphome:
+  name: altherma-simple
+  friendly_name: Altherma Simple
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API (no encryption for simplicity)
+api:
+
+# Enable OTA updates (no password for simplicity)
+ota:
+  - platform: esphome
+
+# WiFi with hardcoded credentials (change these to your network)
+wifi:
+  ssid: "YourWiFiSSID"
+  password: "YourWiFiPassword"
+  
+  # Enable fallback hotspot if wifi connection fails
+  ap:
+    ssid: "Altherma-Fallback"
+    password: "fallback123"
+
+captive_portal:
+
+# Load the Altherma external component from local directory
+external_components:
+  - source: 
+      type: local
+      path: components
+    components: [altherma]
+
+# UART configuration for X10A connection
+# Default pins for ESP32: RX=GPIO16, TX=GPIO17
+uart:
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 9600
+  parity: EVEN
+
+# Altherma Heat Pump Hub
+altherma:
+  id: heatpump
+  update_interval: 30s
+
+# Essential Temperature Sensors
+sensor:
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x20,0,105,2,1,"R1T-Outdoor air temp."}'
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"
+    name: "Outdoor Temperature"
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x61,10,105,2,1,"DHW tank temp. (R5T)"}'
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"
+    name: "DHW Tank Temperature"
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x61,2,105,2,1,"Leaving water temp. before BUH (R1T)"}'
+    accuracy_decimals: 1
+    unit_of_measurement: "°C"
+    device_class: "temperature"    
+    name: "Leaving Water Temperature"
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x62,9,105,2,-1,"Flow sensor (l/min)"}'
+    name: "Water Flow"
+    device_class: "volume_flow_rate"
+    unit_of_measurement: "L/min"
+    accuracy_decimals: 1
+
+# Essential Status Sensors
+text_sensor:
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x10,0,217,1,-1,"Operation Mode"}'
+    name: "Operation Mode"
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x60,5,203,1,-1,"Error type"}'
+    name: "Error Type"
+
+  - platform: altherma
+    altherma_id: heatpump
+    parameter_id: '{0x60,3,204,1,-1,"Error Code"}'
+    name: "Error Code"

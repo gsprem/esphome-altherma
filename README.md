@@ -275,6 +275,16 @@ select:
 - Use shorter cables or shielded wires
 - Check for loose connections
 
+### Verbose Altherma diagnostics
+To log transmitted commands, received bytes, and decoded values, override the Altherma log level:
+
+```yaml
+logger:
+  level: DEBUG
+  logs:
+    altherma: VERY_VERBOSE
+```
+
 ### 0x15 0xEA errors in logs
 - Heat pump returned an error for the registry query
 - Verify the registryID exists for your heat pump model

@@ -108,32 +108,8 @@ void AlthermaComponent::update() {
 
   ESP_LOGD(TAG, "Querying %d registries...", this->unique_registries_.size());
 
-  // Query all registries
   for (const uint8_t registry_id : this->unique_registries_) {
-    size_t len = 0;
-    if (this->query_registry_(registry_id, this->rx_buffer_, len)) {
-      // Process data using ESPAltherma's converter
-      // We iterate ourselves since ESPAltherma's getLabels uses range-for on labelDefs
-      const char reg_id_signed = static_cast<char>(registry_id);
-
-      for (size_t i = 0; i < labelDefs_size; i++) {
-        if (labelDefs[i].registryID == reg_id_signed) {
-          // Bounds check for buffer access
-          const size_t data_offset = labelDefs[i].offset + DATA_OFFSET;
-          if (data_offset < len) {
-            unsigned char *input = this->rx_buffer_ + data_offset;
-            this->converter_->convert(&labelDefs[i], input);
-          } else {
-            ESP_LOGW(TAG, "Data offset %d exceeds buffer length %d for label %s", 
-                     data_offset, len, labelDefs[i].label);
-          }
-        }
-      }
-    } else {
-      ESP_LOGW(TAG, "Failed to query registry 0x%02X", registry_id);
-    }
-    
-    // Small delay between queries to avoid overwhelming the heat pump
+    this->query_and_process_registry_(registry_id);
     delay(INTER_QUERY_DELAY_MS);
   }
 
@@ -207,43 +183,22 @@ bool AlthermaComponent::read_response_(uint8_t *buffer, size_t &len, uint32_t st
   len = 0;  // Reset to track actual bytes read
 
   while ((len < expected_len) && (millis() - start_time < SERIAL_TIMEOUT_MS)) {
-    if (this->available()) {
-      // Buffer overflow protection
-      if (len >= RX_BUFFER_SIZE) {
-        ESP_LOGE(TAG, "Buffer overflow prevented - response too large");
-        return false;
-      }
-
-      buffer[len++] = this->read();
-
-      // Update expected length from response byte 2
-      if (len == LENGTH_BYTE_INDEX + 1) {
-        expected_len = buffer[LENGTH_BYTE_INDEX] + 2;
-        
-        // Validate expected length doesn't exceed buffer
-        if (expected_len > RX_BUFFER_SIZE) {
-          ESP_LOGE(TAG, "Invalid response length %d exceeds buffer size %d", 
-                   expected_len, RX_BUFFER_SIZE);
-          return false;
-        }
-      }
-
-      // Check for error response
-      if (len == 2 && buffer[0] == ERROR_RESPONSE_BYTE1 && buffer[1] == ERROR_RESPONSE_BYTE2) {
-        ESP_LOGW(TAG, "Heat pump returned error 0x%02X 0x%02X (command not understood)",
-                 ERROR_RESPONSE_BYTE1, ERROR_RESPONSE_BYTE2);
-        return false;
-      }
+    if (!this->available()) {
+      yield();
+      continue;
     }
-    yield();  // Allow other tasks to run
+
+    if (!this->read_response_byte_(buffer, len, expected_len)) {
+      return false;
+    }
   }
 
-  // Check for timeout
-  if (millis() - start_time >= SERIAL_TIMEOUT_MS) {
+  if (len != expected_len) {
     if (len == 0) {
       ESP_LOGW(TAG, "Timeout - no response from heat pump");
     } else {
-      ESP_LOGW(TAG, "Timeout, got %d/%d bytes", len, expected_len);
+      ESP_LOGW(TAG, "Timeout, got %u/%u bytes", static_cast<unsigned int>(len),
+               static_cast<unsigned int>(expected_len));
     }
     return false;
   }
@@ -251,8 +206,118 @@ bool AlthermaComponent::read_response_(uint8_t *buffer, size_t &len, uint32_t st
   return true;
 }
 
+bool AlthermaComponent::read_response_byte_(uint8_t *buffer, size_t &len, size_t &expected_len) {
+  if (len >= RX_BUFFER_SIZE) {
+    ESP_LOGE(TAG, "Buffer overflow prevented - response too large");
+    return false;
+  }
+
+  const int next_byte = this->read();
+  if (next_byte < 0) {
+    return false;
+  }
+
+  buffer[len++] = static_cast<uint8_t>(next_byte);
+  ESP_LOGVV(TAG, "RX[%u] = 0x%02X", static_cast<unsigned int>(len - 1), buffer[len - 1]);
+
+  if (len == LENGTH_BYTE_INDEX + 1 && !this->update_expected_response_length_(buffer, expected_len)) {
+    return false;
+  }
+
+  return !this->is_heat_pump_error_response_(buffer, len);
+}
+
+bool AlthermaComponent::update_expected_response_length_(const uint8_t *buffer, size_t &expected_len) const {
+  // The length field counts bytes after the first two frame bytes.
+  expected_len = static_cast<size_t>(buffer[LENGTH_BYTE_INDEX]) + 2;
+  if (expected_len < DATA_OFFSET + 1) {
+    ESP_LOGW(TAG, "Invalid response length %u", static_cast<unsigned int>(expected_len));
+    return false;
+  }
+
+  if (expected_len > RX_BUFFER_SIZE) {
+    ESP_LOGE(TAG, "Invalid response length %u exceeds buffer size %u",
+             static_cast<unsigned int>(expected_len), static_cast<unsigned int>(RX_BUFFER_SIZE));
+    return false;
+  }
+
+  return true;
+}
+
+bool AlthermaComponent::is_heat_pump_error_response_(const uint8_t *buffer, size_t len) const {
+  if (len != 2 || buffer[0] != ERROR_RESPONSE_BYTE1 || buffer[1] != ERROR_RESPONSE_BYTE2) {
+    return false;
+  }
+
+  ESP_LOGW(TAG, "Heat pump returned error 0x%02X 0x%02X (command not understood)",
+           ERROR_RESPONSE_BYTE1, ERROR_RESPONSE_BYTE2);
+  return true;
+}
+
+void AlthermaComponent::query_and_process_registry_(uint8_t registry_id) {
+  size_t frame_len = 0;
+  if (!this->query_registry_(registry_id, this->rx_buffer_, frame_len)) {
+    ESP_LOGW(TAG, "Failed to query registry 0x%02X", registry_id);
+    return;
+  }
+
+  this->process_registry_data_(registry_id, frame_len);
+}
+
+void AlthermaComponent::process_registry_data_(uint8_t registry_id, size_t frame_len) {
+  for (size_t i = 0; i < labelDefs_size; i++) {
+    if (static_cast<uint8_t>(labelDefs[i].registryID) == registry_id) {
+      this->process_label_(registry_id, labelDefs[i], frame_len);
+    }
+  }
+}
+
+void AlthermaComponent::process_label_(uint8_t registry_id, LabelDef &label, size_t frame_len) {
+  if (frame_len < DATA_OFFSET + 1) {
+    ESP_LOGW(TAG, "Registry 0x%02X frame is too short to contain a payload", registry_id);
+    return;
+  }
+
+  const size_t data_offset = static_cast<size_t>(label.offset) + DATA_OFFSET;
+  const size_t data_size = static_cast<size_t>(label.dataSize);
+  // Exclude the trailing CRC when checking the converter's input range.
+  const size_t frame_data_end = frame_len - 1;
+  if (label.dataSize <= 0 || data_offset > frame_data_end || data_size > frame_data_end - data_offset) {
+    ESP_LOGW(TAG, "Registry 0x%02X frame too short for label '%s' (offset %u, size %u, frame %u)",
+             registry_id, label.label, static_cast<unsigned int>(data_offset), static_cast<unsigned int>(data_size),
+             static_cast<unsigned int>(frame_len));
+    return;
+  }
+
+  unsigned char *input = this->rx_buffer_ + data_offset;
+  ESP_LOGVV(TAG, "Registry 0x%02X label '%s' raw data:", registry_id, label.label);
+  for (size_t byte = 0; byte < data_size; byte++) {
+    ESP_LOGVV(TAG, "  [%u] 0x%02X", static_cast<unsigned int>(byte), input[byte]);
+  }
+
+  this->converter_->convert(&label, input);
+  ESP_LOGVV(TAG, "Registry 0x%02X label '%s' decoded as '%s'", registry_id, label.label, label.asString);
+}
+
 bool AlthermaComponent::validate_response_(const uint8_t *buffer, size_t len, uint8_t registry_id) const {
-  if (len == 0) {
+  if (buffer == nullptr || len < DATA_OFFSET + 1) {
+    ESP_LOGW(TAG, "Response for registry 0x%02X is too short (%u bytes)", registry_id,
+             static_cast<unsigned int>(len));
+    return false;
+  }
+
+  if (buffer[0] != RESPONSE_HEADER) {
+    ESP_LOGW(TAG, "Invalid response header for registry 0x%02X: 0x%02X", registry_id, buffer[0]);
+    return false;
+  }
+
+  if (buffer[1] != registry_id) {
+    ESP_LOGW(TAG, "Response registry mismatch: requested 0x%02X, received 0x%02X", registry_id, buffer[1]);
+    return false;
+  }
+
+  if (static_cast<size_t>(buffer[LENGTH_BYTE_INDEX]) + 2 != len) {
+    ESP_LOGW(TAG, "Response length field mismatch for registry 0x%02X", registry_id);
     return false;
   }
 
@@ -278,15 +343,30 @@ bool AlthermaComponent::query_registry_(uint8_t registry_id, uint8_t *buffer, si
   uint8_t cmd[MAX_COMMAND_SIZE];
   size_t cmd_len;
   this->build_command_(registry_id, cmd, cmd_len);
-  
+
+  size_t discarded_bytes = 0;
+  const size_t pending_bytes = this->available();
+  for (size_t i = 0; i < pending_bytes; i++) {
+    if (this->read() < 0) {
+      break;
+    }
+    discarded_bytes++;
+  }
+  if (discarded_bytes > 0) {
+    ESP_LOGW(TAG, "Discarded %u stale UART bytes before registry 0x%02X",
+             static_cast<unsigned int>(discarded_bytes), registry_id);
+  }
+
   ESP_LOGV(TAG, "Querying registry 0x%02X...", registry_id);
-  this->flush();
+  ESP_LOGVV(TAG, "TX registry 0x%02X: %02X %02X %02X %02X", registry_id, cmd[0], cmd[1], cmd[2], cmd[3]);
+
   this->write_array(cmd, cmd_len);
+  this->flush();
 
   // Read response
   const uint32_t start_time = millis();
   len = INITIAL_REPLY_LENGTH;
-  
+
   if (!this->read_response_(buffer, len, start_time)) {
     return false;
   }

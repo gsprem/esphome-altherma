@@ -41,6 +41,7 @@ static constexpr size_t MAX_COMMAND_SIZE = 4;
 // Protocol I command codes (Daikin Altherma protocol)
 static const uint8_t CMD_HEADER = 0x03;
 static const uint8_t CMD_PREFIX = 0x40;
+static const uint8_t RESPONSE_HEADER = 0x40;
 static const size_t CMD_LENGTH = 4;
 static const size_t INITIAL_REPLY_LENGTH = 12;
 static const size_t LENGTH_BYTE_INDEX = 2;
@@ -123,6 +124,13 @@ class AlthermaComponent : public PollingComponent, public uart::UARTDevice {
    * @return true if query successful, false on timeout/error.
    */
   bool query_registry_(uint8_t registry_id, uint8_t *buffer, size_t &len);
+
+  void query_and_process_registry_(uint8_t registry_id);
+  void process_registry_data_(uint8_t registry_id, size_t frame_len);
+  void process_label_(uint8_t registry_id, LabelDef &label, size_t frame_len);
+  bool read_response_byte_(uint8_t *buffer, size_t &len, size_t &expected_len);
+  bool update_expected_response_length_(const uint8_t *buffer, size_t &expected_len) const;
+  bool is_heat_pump_error_response_(const uint8_t *buffer, size_t len) const;
   
   /**
    * @brief Build list of unique registry IDs from labelDefs.
